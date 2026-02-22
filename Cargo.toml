@@ -1,13 +1,15 @@
 [package]
-name = "rs-fanqie-downloader"
+name = "fqdl"
 version = "0.1.0"
 edition = "2021"
 authors = ["Fanqie Novel Downloader Rust Team"]
 description = "A fast and efficient Fanqie novel downloader written in Rust"
 license = "MIT"
-repository = "https://github.com/POf-L/Fanqie-novel-Downloader"
+repository = "https://github.com/dkfghrdso/fanqie-downloader-rs"
 keywords = ["novel", "downloader", "fanqie", "cli"]
 categories = ["command-line-utilities"]
+readme = "README.md"
+homepage = "https://github.com/dkfghrdso/fanqie-downloader-rs"
 
 [[bin]]
 name = "fqdl"
@@ -45,3 +47,33 @@ strip = true
 [profile.dev]
 opt-level = 0
 debug = true
+
+[package.metadata.deb]
+maintainer = "Fanqie Novel Downloader Rust Team <dkfghrdso@users.noreply.github.com>"
+copyright = "2026, Fanqie Novel Downloader Rust Team"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+A fast and efficient Fanqie novel downloader written in Rust.
+Supports searching, downloading, and exporting novels in TXT and EPUB formats."""
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/fqdl", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/fqdl/", "644"],
+    ["config/fanqie.json", "etc/fqdl/", "644"],
+]
+
+[package.metadata.rpm]
+package = "fqdl"
+license = "MIT"
+summary = "A fast and efficient Fanqie novel downloader"
+url = "https://github.com/dkfghrdso/fanqie-downloader-rs"
+
+[package.metadata.rpm.files]
+"target/release/fqdl" = { path = "/usr/bin/fqdl", mode = "755" }
+"README.md" = { path = "/usr/share/doc/fqdl/README.md", mode = "644" }
+"config/fanqie.json" = { path = "/etc/fqdl/fanqie.json", mode = "644" }
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]

@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      
+      - name: Build
+        run: cargo build --release
+      
+      - name: Create archive
+        run: |
+          mkdir release
+          copy target\release\fqdl.exe release\
+          copy config\fanqie.json release\
+          copy README.md release\
+          cd release
+          7z a -tzip ../fqdl-windows-x86_64.zip *
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: fqdl-windows-x86_64.zip
+
+  build-linux-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+      
+      - name: Build
+        run: cargo build --release
+      
+      - name: Build deb package
+        run: cargo deb --no-build --output target/debian/fqdl_amd64.deb
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: target/debian/fqdl_amd64.deb
+
+  build-linux-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          dnf install -y rust cargo gcc
+      
+      - name: Build
+        run: cargo build --release
+      
+      - name: Install cargo-generate-rpm
+        run: cargo install cargo-generate-rpm
+      
+      - name: Build RPM package
+        run: |
+          strip -s target/release/fqdl
+          cargo generate-rpm --output target/generate-rpm/fqdl.x86_64.rpm
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: target/generate-rpm/fqdl.x86_64.rpm
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+      
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: true
+      
+      - name: Setup Android toolchain
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+      
+      - name: Build for Android (arm64)
+        run: |
+          cargo build --release --target aarch64-linux-android
+      
+      - name: Build for Android (arm)
+        run: |
+          cargo build --release --target armv7-linux-androideabi
+      
+      - name: Build for Android (x86_64)
+        run: |
+          cargo build --release --target x86_64-linux-android
+      
+      - name: Build for Android (x86)
+        run: |
+          cargo build --release --target i686-linux-android
+      
+      - name: Create Android binaries archive
+        run: |
+          mkdir -p android-binaries
+          cp target/aarch64-linux-android/release/fqdl android-binaries/fqdl-arm64-v8a
+          cp target/armv7-linux-androideabi/release/fqdl android-binaries/fqdl-armeabi-v7a
+          cp target/x86_64-linux-android/release/fqdl android-binaries/fqdl-x86_64
+          cp target/i686-linux-android/release/fqdl android-binaries/fqdl-x86
+          tar -czvf fqdl-android-binaries.tar.gz -C android-binaries .
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-binaries
+          path: fqdl-android-binaries.tar.gz
+
+  release:
+    needs: [build-windows, build-linux-deb, build-linux-rpm, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows-x86_64/fqdl-windows-x86_64.zip
+            artifacts/linux-deb/fqdl_amd64.deb
+            artifacts/linux-rpm/fqdl.x86_64.rpm
+            artifacts/android-binaries/fqdl-android-binaries.tar.gz
+          body: |
+            ## 番茄小说下载器 ${{ github.ref_name }}
+            
+            ### 下载说明
+            
+            #### Windows
+            - 下载 `fqdl-windows-x86_64.zip`
+            - 解压后在命令行运行 `fqdl.exe`
+            
+            #### Linux (Debian/Ubuntu)
+            - 下载 `fqdl_amd64.deb`
+            - 安装: `sudo dpkg -i fqdl_amd64.deb`
+            - 运行: `fqdl search "关键词"`
+            
+            #### Linux (Fedora/RHEL/CentOS)
+            - 下载 `fqdl.x86_64.rpm`
+            - 安装: `sudo rpm -i fqdl.x86_64.rpm`
+            - 运行: `fqdl search "关键词"`
+            
+            #### Android
+            - 下载 `fqdl-android-binaries.tar.gz`
+            - 解压后通过 ADB 推送到设备或使用 Termux 运行
+            - 支持 arm64-v8a, armeabi-v7a, x86_64, x86 架构
+            
+            ### 使用方法
+            
+            ```bash
+            # 搜索书籍
+            fqdl search "斗破苍穹"
+            
+            # 查看书籍信息
+            fqdl info <书籍ID>
+            
+            # 下载书籍
+            fqdl download <书籍ID> -p ~/Downloads -f txt
+            
+            # 批量下载
+            fqdl batch <书籍ID1> <书籍ID2> -c 3
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
